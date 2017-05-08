@@ -1,0 +1,22 @@
+Source: erlang-toml
+Maintainer: Stanislaw Klekot <dozzie@jarowit.net>
+Section: erlang
+Priority: optional
+Build-Depends: debhelper (>> 7.0.0), make, erlang-base, erlang-dev,
+ erlang-parsetools
+
+Package: erlang-toml
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}, erlang-base
+Description: TOML parser for Erlang
+ toml is an Erlang library application for parsing TOML configuration
+ language. It supports parsing 0.4.0 version of the TOML specification.
+
+Package: erlang-toml-doc
+Architecture: all
+Depends: ${shlibs:Depends}, ${misc:Depends}
+Description: TOML parser for Erlang - API documentation
+ toml is an Erlang library application for parsing TOML configuration
+ language. It supports parsing 0.4.0 version of the TOML specification.
+ .
+ This package contains API documentation generated from sources.

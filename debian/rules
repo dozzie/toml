@@ -1,0 +1,14 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	make all
+	make doc
+
+override_dh_auto_install:
+	make install DESTDIR=$(CURDIR)/debian/tmp
+
+override_dh_auto_clean:
+	rm -rf doc ebin

@@ -1,3 +1,10 @@
+erlang-toml (0.3.0-1) stable; urgency=low
+
+  * Errors from config validation function got documented location structure.
+  * Validation function now also checks section names.
+
+ -- Stanislaw Klekot <dozzie@jarowit.net>  Sat, 28 Oct 2017 17:16:31 +0200
+
 erlang-toml (0.2.0-1) stable; urgency=low
 
   * Initial release.

@@ -19,7 +19,8 @@
 -export_type([config/0, section/0, key/0, toml_value/0]).
 -export_type([toml_array/0, datetime/0]).
 -export_type([jsx_object/0, jsx_list/0, jsx_value/0]).
--export_type([validate_fun/0, validate_fun_return/0, validate_error/0]).
+-export_type([validate_fun/0, validate_fun_return/0]).
+-export_type([validate_location/0, validate_error/0]).
 -export_type([toml_error/0, semantic_error/0]).
 -export_type([semerr_redefinition/0, semerr_inline/0]).
 -export_type([semerr_data_location/0, semerr_location/0]).
@@ -48,14 +49,14 @@
   | {datetime, datetime()}
   | {array, toml_array()}
   | {data, term()}.
-%% Value stored under {@link key()}, along with its type.
+%% Value stored under {@type key()}, along with its type.
 %%
-%% Custom Erlang structure returned by validation function ({@link
+%% Custom Erlang structure returned by validation function ({@type
 %% validate_fun()}) is denoted by {@type @{data, Data@}}.
 %%
 %% Array of values is doubly typed, first as an array, and then with data type
 %% of its content, e.g. `{array, {string, ["one", "two", "three"]}}'. See
-%% {@link toml_array()} for details.
+%% {@type toml_array()} for details.
 
 %% }}}
 %%----------------------------------------------------------
@@ -103,11 +104,22 @@
 %% validation function {{{
 
 -type validate_fun() ::
-  fun((section(), key(), toml_value(), Arg :: term()) -> validate_fun_return()).
+  fun((section(), key(), toml_value() | section, Arg :: term()) ->
+        validate_fun_return()).
 %% Key validation callback. This callback is specified at configuration
 %% parsing time and has a chance to further verify validity of a value or even
 %% convert it already to its intended form, e.g. listen address
 %% `"<host>:<port>"' can be immediately converted to `{Host,Port}' tuple.
+%%
+%% <b>NOTE</b>: Array section ("array of tables" in TOML's terms) is passed
+%% as an array of objects, i.e.
+%% {@type @{array, @{object, [jsx_object(), ...]@}@}}.
+%%
+%% Since it's not allowed to have a section and key of the same name,
+%% subsections themselves are also subject to validation. Validation function
+%% can return `ok', `{ok,_}', or `ignore' to accept the section name (the
+%% three values have the same result; any data from `{ok,Data}' is ignored)
+%% and `{error,_}' to reject the name.
 
 -type validate_fun_return() :: ok | {ok, Data :: term()} | ignore
                              | {error, validate_error()}.
@@ -116,9 +128,9 @@
 %% {@type @{ok, Data@}} results in the {@type toml_value()} of `{data, Data}'.
 %% See {@link get_value/3}.
 %%
-%% {@type @{error, Reason :: validate_error()@}} is reported by {@link
-%% read_file/2} and {@link parse/2} as {@type @{error, @{validate, Where,
-%% Reason@}@}}.
+%% {@type @{error, Reason :: validate_error()@}} is reported by
+%% {@link read_file/2} and {@link parse/2} as
+%% {@type @{error, @{validate, Where :: validate_location(), Reason@}@}}.
 
 -type validate_error() :: term().
 %% Error returned by {@type validate_fun()}. See {@type validate_fun_return()}
@@ -131,9 +143,13 @@
 -type toml_error() :: {tokenize, Line :: pos_integer()}
                     | {parse, Line :: pos_integer()}
                     | {semantic, semantic_error()}
-                    | {bad_return, Where :: term(), Result :: term()}
-                    | {validate, Where :: term(), validate_error()}.
+                    | {bad_return, validate_location(), Result :: term()}
+                    | {validate, validate_location(), validate_error()}.
 %% Error in processing TOML.
+
+-type validate_location() ::
+  {Section :: [string()], Key :: string(), Line :: pos_integer()}.
+%% Location information of validation error (see {@type validate_fun()}).
 
 -type semantic_error() :: semerr_redefinition() | semerr_inline().
 %% Data-level error, meaning that data represented by TOML config is forbidden
@@ -174,7 +190,8 @@
 %% types: key for objects, 1-based index for arrays.
 
 -type semerr_location() ::
-  {Path :: [string(), ...], CurLine :: pos_integer, PrevLine :: pos_integer()}.
+  {Path :: [string(), ...], CurLine :: pos_integer(),
+    PrevLine :: pos_integer()}.
 %% Location information of semantic error. `Path' is name of the offending
 %% section and, if applicable, key.
 
@@ -260,8 +277,8 @@ accept_all(_Section, _Key, _Value, _Arg) ->
 -spec build_config([term()], validate_fun(), term()) ->
   {ok, config()} | {error, Reason}
   when Reason :: {semantic, term()}
-               | {validate, Where :: term(), validate_error()}
-               | {bad_return, Where :: term(), term()}.
+               | {validate, Where :: validate_location(), validate_error()}
+               | {bad_return, Where :: validate_location(), term()}.
 
 build_config(Directives, Fun, Arg) ->
   case toml_dict:build_store(Directives) of
@@ -270,10 +287,12 @@ build_config(Directives, Fun, Arg) ->
       try toml_dict:fold(fun build_config/4, {Fun, Arg, EmptyConfig}, Store) of
         {_, _, Config} -> {ok, {toml, Config}}
       catch
-        throw:{bad_return, Where, Result} ->
-          {error, {bad_return, Where, Result}};
-        throw:{validate, Where, Reason} ->
-          {error, {validate, Where, Reason}}
+        throw:{bad_return, {Section, Key}, Result} ->
+          Line = toml_dict:find_line(Section, Key, Store),
+          {error, {bad_return, {Section, Key, Line}, Result}};
+        throw:{validate, {Section, Key}, Reason} ->
+          Line = toml_dict:find_line(Section, Key, Store),
+          {error, {validate, {Section, Key, Line}, Reason}}
       end;
     {error, Reason} ->
       {error, {semantic, Reason}}
@@ -285,6 +304,13 @@ build_config(Directives, Fun, Arg) ->
   term().
 
 build_config(Section, Key, section = _Value, {ValidateFun, Arg, Config}) ->
+  case ValidateFun(Section, Key, section, Arg) of
+    ok -> ok;
+    {ok, _Data} -> ignore;
+    ignore -> ok;
+    {error, Reason} -> erlang:throw({validate, {Section, Key}, Reason});
+    Result -> erlang:throw({bad_return, {Section, Key}, Result})
+  end,
   NewConfig = dict:update(
     Section,
     fun({Keys, SubSects}) -> {Keys, [Key | SubSects]} end,
@@ -335,13 +361,13 @@ empty_section() ->
 -spec format_error(Reason :: term()) ->
   string().
 
-format_error({validate, _Where, Reason}) ->
+format_error({validate, {_Section, _Key, _Line} = _Where, Reason}) ->
   % TODO: use `Where' (error location)
   unicode:characters_to_list([
     "validation error: ",
     io_lib:print(Reason, 1, 16#ffffffff, -1)
   ]);
-format_error({bad_return, _Where, Result}) ->
+format_error({bad_return, {_Section, _Key, _Line} = _Where, Result}) ->
   % TODO: use `Where' (error location)
   unicode:characters_to_list([
     "unexpected value from validation function: ",

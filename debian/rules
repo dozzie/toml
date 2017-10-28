@@ -4,11 +4,12 @@
 	dh $@
 
 override_dh_auto_build:
-	make all
+	make app
 	make doc
 
 override_dh_auto_install:
 	make install DESTDIR=$(CURDIR)/debian/tmp
 
 override_dh_auto_clean:
-	rm -rf doc ebin
+	make clean
+	rm -rf doc

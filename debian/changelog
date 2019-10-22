@@ -1,3 +1,9 @@
+erlang-toml (0.3.0-2) stable; urgency=low
+
+  * Packaging update for Debian 9 and later.
+
+ -- Stanislaw Klekot <dozzie@jarowit.net>  Tue, 22 Oct 2019 20:27:55 +0200
+
 erlang-toml (0.3.0-1) stable; urgency=low
 
   * Errors from config validation function got documented location structure.

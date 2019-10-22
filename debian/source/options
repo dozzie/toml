@@ -1,0 +1,2 @@
+compression = gzip
+diff-ignore = '^(_versions/|\.erlang\.mk|\.git|build\.config|c_src/.*\.mk)|/\.git'
